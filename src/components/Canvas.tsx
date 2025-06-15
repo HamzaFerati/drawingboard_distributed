@@ -8,6 +8,7 @@ interface CanvasProps {
   currentTool: DrawingTool;
   currentColor: string;
   currentSize: number;
+  currentOpacity: number;
   otherCursors: Record<string, { cursor: Point; color: string; name: string }>;
 }
 
@@ -18,6 +19,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   currentTool,
   currentColor,
   currentSize,
+  currentOpacity,
   otherCursors
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,18 +41,20 @@ export const Canvas: React.FC<CanvasProps> = ({
     };
   }, []);
 
-  const drawLine = useCallback((ctx: CanvasRenderingContext2D, from: Point, to: Point, color: string, size: number) => {
+  const drawLine = useCallback((ctx: CanvasRenderingContext2D, from: Point, to: Point, color: string, size: number, opacity: number) => {
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
     ctx.lineTo(to.x, to.y);
     ctx.strokeStyle = color;
+    ctx.globalAlpha = opacity;
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
+    ctx.globalAlpha = 1.0;
   }, []);
 
-  const drawStroke = useCallback((ctx: CanvasRenderingContext2D, points: Point[], color: string, size: number) => {
+  const drawStroke = useCallback((ctx: CanvasRenderingContext2D, points: Point[], color: string, size: number, opacity: number) => {
     if (points.length < 2) return;
 
     ctx.beginPath();
@@ -61,27 +65,33 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
     
     ctx.strokeStyle = color;
+    ctx.globalAlpha = opacity;
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
+    ctx.globalAlpha = 1.0;
   }, []);
 
-  const drawRectangle = useCallback((ctx: CanvasRenderingContext2D, start: Point, end: Point, color: string, size: number) => {
+  const drawRectangle = useCallback((ctx: CanvasRenderingContext2D, start: Point, end: Point, color: string, size: number, opacity: number) => {
     ctx.beginPath();
     ctx.rect(start.x, start.y, end.x - start.x, end.y - start.y);
     ctx.strokeStyle = color;
+    ctx.globalAlpha = opacity;
     ctx.lineWidth = size;
     ctx.stroke();
+    ctx.globalAlpha = 1.0;
   }, []);
 
-  const drawCircle = useCallback((ctx: CanvasRenderingContext2D, start: Point, end: Point, color: string, size: number) => {
+  const drawCircle = useCallback((ctx: CanvasRenderingContext2D, start: Point, end: Point, color: string, size: number, opacity: number) => {
     const radius = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
     ctx.beginPath();
     ctx.arc(start.x, start.y, radius, 0, 2 * Math.PI);
     ctx.strokeStyle = color;
+    ctx.globalAlpha = opacity;
     ctx.lineWidth = size;
     ctx.stroke();
+    ctx.globalAlpha = 1.0;
   }, []);
 
   const erase = useCallback((ctx: CanvasRenderingContext2D, points: Point[], size: number) => {
@@ -116,14 +126,15 @@ export const Canvas: React.FC<CanvasProps> = ({
       if (operation.type === 'clear') {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       } else if (operation.type === 'stroke') {
+        const op = operation.opacity !== undefined ? operation.opacity : 1.0;
         if (operation.tool === 'pen') {
-          drawStroke(ctx, operation.points, operation.color, operation.size);
+          drawStroke(ctx, operation.points, operation.color, operation.size, op);
         } else if (operation.tool === 'line' && operation.points.length >= 2) {
-          drawLine(ctx, operation.points[0], operation.points[operation.points.length - 1], operation.color, operation.size);
+          drawLine(ctx, operation.points[0], operation.points[operation.points.length - 1], operation.color, operation.size, op);
         } else if (operation.tool === 'rectangle' && operation.points.length >= 2) {
-          drawRectangle(ctx, operation.points[0], operation.points[operation.points.length - 1], operation.color, operation.size);
+          drawRectangle(ctx, operation.points[0], operation.points[operation.points.length - 1], operation.color, operation.size, op);
         } else if (operation.tool === 'circle' && operation.points.length >= 2) {
-          drawCircle(ctx, operation.points[0], operation.points[operation.points.length - 1], operation.color, operation.size);
+          drawCircle(ctx, operation.points[0], operation.points[operation.points.length - 1], operation.color, operation.size, op);
         }
       } else if (operation.type === 'erase') {
         erase(ctx, operation.points, operation.size);
@@ -159,10 +170,10 @@ export const Canvas: React.FC<CanvasProps> = ({
           if (currentTool === 'eraser') {
             ctx.save();
             ctx.globalCompositeOperation = 'destination-out';
-            drawLine(ctx, currentStroke[currentStroke.length - 1] || point, point, currentColor, currentSize);
+            drawLine(ctx, currentStroke[currentStroke.length - 1] || point, point, currentColor, currentSize, 1.0);
             ctx.restore();
           } else {
-            drawLine(ctx, currentStroke[currentStroke.length - 1] || point, point, currentColor, currentSize);
+            drawLine(ctx, currentStroke[currentStroke.length - 1] || point, point, currentColor, currentSize, currentOpacity);
           }
         }
       }
@@ -172,7 +183,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         setCurrentStroke([startPoint, point]);
       }
     }
-  }, [getCanvasPoint, onCursorMove, isDrawing, currentTool, currentStroke, currentColor, currentSize, startPoint, drawLine]);
+  }, [getCanvasPoint, onCursorMove, isDrawing, currentTool, currentStroke, currentColor, currentSize, currentOpacity, startPoint, drawLine]);
 
   const handleMouseUp = useCallback(() => {
     if (!isDrawing || currentStroke.length === 0) return;
@@ -182,6 +193,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       points: currentStroke,
       color: currentColor,
       size: currentSize,
+      opacity: currentOpacity,
       tool: currentTool,
       timestamp: Date.now()
     };
@@ -191,7 +203,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     setIsDrawing(false);
     setCurrentStroke([]);
     setStartPoint(null);
-  }, [isDrawing, currentStroke, currentTool, currentColor, currentSize, onDrawingOperation]);
+  }, [isDrawing, currentStroke, currentTool, currentColor, currentSize, currentOpacity, onDrawingOperation]);
 
   // Set up canvas size
   useEffect(() => {

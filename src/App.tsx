@@ -21,6 +21,7 @@ function App() {
   const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
   const [currentColor, setCurrentColor] = useState('#000000');
   const [currentSize, setCurrentSize] = useState(4);
+  const [currentOpacity, setCurrentOpacity] = useState(1.0);
 
   const handleDrawingOperation = (operation: any) => {
     addDrawingOperation(operation);
@@ -89,9 +90,11 @@ function App() {
               currentTool={currentTool}
               currentColor={currentColor}
               currentSize={currentSize}
+              currentOpacity={currentOpacity}
               onToolChange={setCurrentTool}
               onColorChange={setCurrentColor}
               onSizeChange={setCurrentSize}
+              onOpacityChange={setCurrentOpacity}
               onClearCanvas={clearCanvas}
               connectedUsers={Object.keys(systemState.users).length}
             />
@@ -106,6 +109,7 @@ function App() {
               currentTool={currentTool}
               currentColor={currentColor}
               currentSize={currentSize}
+              currentOpacity={currentOpacity}
               otherCursors={otherCursors}
             />
           </div>
@@ -135,6 +139,7 @@ function App() {
           <li>• Watch real-time synchronization</li>
           <li>• Close tabs to test fault tolerance</li>
           <li>• See distributed state management in action</li>
+          <li>• Try different opacity levels for artistic effects</li>
         </ul>
       </div>
     </div>
