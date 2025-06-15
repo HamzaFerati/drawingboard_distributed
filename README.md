@@ -64,4 +64,4 @@ See `PROJECT_OVERVIEW.md` for a detailed technical and conceptual breakdown.
 
 ---
 
-© Hamza Ferati
+© Hamza Ferati, Muas Abdulla
