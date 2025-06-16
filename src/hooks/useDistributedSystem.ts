@@ -13,7 +13,9 @@ const HEARTBEAT_INTERVAL = 1000;
 const NODE_TIMEOUT = 5000;
 const STORAGE_KEY = 'drawing_board_state';
 const NODES_KEY = 'drawing_board_nodes';
-const WS_URL = 'ws://localhost:3001';
+const WS_URL = process.env.NODE_ENV === 'production' 
+  ? 'wss://drawing-board-websocket.onrender.com'
+  : 'ws://localhost:3001';
 
 export const useDistributedSystem = () => {
   const [systemState, setSystemState] = useState<SystemState>({
