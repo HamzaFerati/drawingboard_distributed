@@ -2,10 +2,18 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DrawingEvent, SystemState, User, DrawingOperation, DistributedNode } from '../types';
 
+// Add NodeJS type definition
+declare global {
+  namespace NodeJS {
+    interface Timeout {}
+  }
+}
+
 const HEARTBEAT_INTERVAL = 1000;
 const NODE_TIMEOUT = 5000;
 const STORAGE_KEY = 'drawing_board_state';
 const NODES_KEY = 'drawing_board_nodes';
+const WS_URL = 'ws://localhost:3001';
 
 export const useDistributedSystem = () => {
   const [systemState, setSystemState] = useState<SystemState>({
@@ -20,8 +28,8 @@ export const useDistributedSystem = () => {
   const [connectedNodes, setConnectedNodes] = useState<string[]>([]);
   
   const nodeId = useRef<string>(uuidv4());
-  const broadcastChannel = useRef<BroadcastChannel | null>(null);
-  const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const heartbeatInterval = useRef<number | null>(null);
 
   // Initialize user and distributed system
   useEffect(() => {
@@ -46,23 +54,62 @@ export const useDistributedSystem = () => {
   }, []);
 
   const initializeDistributedSystem = useCallback((user: User) => {
-    // Initialize broadcast channel for inter-tab communication
-    broadcastChannel.current = new BroadcastChannel('drawing_board');
+    // Initialize WebSocket connection
+    wsRef.current = new WebSocket(WS_URL);
     
     // Load persisted state
     loadPersistedState();
     
-    // Register this node
-    registerNode(user);
+    // Set up WebSocket event handlers
+    wsRef.current.onopen = () => {
+      console.log('WebSocket connected');
+      registerNode(user);
+    };
+
+    wsRef.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
+    };
+
+    wsRef.current.onclose = () => {
+      console.log('WebSocket disconnected');
+      // Attempt to reconnect after a delay
+      setTimeout(() => {
+        if (wsRef.current?.readyState === WebSocket.CLOSED) {
+          initializeDistributedSystem(user);
+        }
+      }, 3000);
+    };
     
     // Set up heartbeat
     startHeartbeat();
-    
-    // Listen for messages from other nodes
-    broadcastChannel.current.onmessage = handleBroadcastMessage;
-    
-    // Elect leader
-    electLeader();
+  }, []);
+
+  const handleWebSocketMessage = useCallback((data: any) => {
+    switch (data.type) {
+      case 'connection':
+        nodeId.current = data.clientId;
+        break;
+      case 'user_join':
+        handleUserJoin(data.user);
+        break;
+      case 'user_leave':
+        handleUserLeave(data.userId);
+        break;
+      case 'drawing_operation':
+        handleDrawingOperation(data.operation);
+        break;
+      case 'state_sync':
+        handleStateSync(data.state);
+        break;
+      case 'cursor_move':
+        handleCursorMove(data.userId, data.cursor);
+        break;
+    }
   }, []);
 
   const loadPersistedState = useCallback(() => {
@@ -86,137 +133,28 @@ export const useDistributedSystem = () => {
   }, []);
 
   const registerNode = useCallback((user: User) => {
-    const node: DistributedNode = {
-      id: nodeId.current,
-      isLeader: false,
-      lastHeartbeat: Date.now(),
-      state: systemState
-    };
-
-    try {
-      const nodes = JSON.parse(localStorage.getItem(NODES_KEY) || '{}');
-      nodes[nodeId.current] = node;
-      localStorage.setItem(NODES_KEY, JSON.stringify(nodes));
-    } catch (error) {
-      console.error('Failed to register node:', error);
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'user_join',
+        user
+      }));
     }
-
-    // Broadcast presence
-    broadcastEvent({
-      id: uuidv4(),
-      type: 'draw',
-      userId: user.id,
-      timestamp: Date.now(),
-      data: { type: 'user_join', user },
-      version: systemState.currentVersion
-    });
-  }, [systemState]);
+  }, []);
 
   const startHeartbeat = useCallback(() => {
     heartbeatInterval.current = setInterval(() => {
-      // Update node heartbeat
-      try {
-        const nodes = JSON.parse(localStorage.getItem(NODES_KEY) || '{}');
-        if (nodes[nodeId.current]) {
-          nodes[nodeId.current].lastHeartbeat = Date.now();
-          localStorage.setItem(NODES_KEY, JSON.stringify(nodes));
-        }
-      } catch (error) {
-        console.error('Heartbeat update failed:', error);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'heartbeat',
+          timestamp: Date.now()
+        }));
       }
-
-      // Clean up dead nodes
-      cleanupDeadNodes();
-      
-      // Re-elect leader if needed
-      electLeader();
     }, HEARTBEAT_INTERVAL);
   }, []);
 
-  const cleanupDeadNodes = useCallback(() => {
-    try {
-      const nodes = JSON.parse(localStorage.getItem(NODES_KEY) || '{}');
-      const now = Date.now();
-      const activeNodes: string[] = [];
-
-      Object.entries(nodes).forEach(([id, node]: [string, any]) => {
-        if (now - node.lastHeartbeat < NODE_TIMEOUT) {
-          activeNodes.push(id);
-        } else {
-          delete nodes[id];
-        }
-      });
-
-      localStorage.setItem(NODES_KEY, JSON.stringify(nodes));
-      setConnectedNodes(activeNodes);
-    } catch (error) {
-      console.error('Failed to cleanup dead nodes:', error);
-    }
-  }, []);
-
-  const electLeader = useCallback(() => {
-    try {
-      const nodes = JSON.parse(localStorage.getItem(NODES_KEY) || '{}');
-      const activeNodes = Object.entries(nodes)
-        .filter(([_, node]: [string, any]) => Date.now() - node.lastHeartbeat < NODE_TIMEOUT)
-        .sort(([a], [b]) => a.localeCompare(b));
-
-      if (activeNodes.length > 0) {
-        const leaderId = activeNodes[0][0];
-        const wasLeader = isLeader;
-        const nowLeader = leaderId === nodeId.current;
-        
-        setIsLeader(nowLeader);
-        
-        if (nowLeader && !wasLeader) {
-          console.log('Elected as leader');
-          // Leader takes responsibility for state synchronization
-          broadcastStateSync();
-        }
-      }
-    } catch (error) {
-      console.error('Leader election failed:', error);
-    }
-  }, [isLeader]);
-
   const broadcastEvent = useCallback((event: DrawingEvent) => {
-    if (broadcastChannel.current) {
-      broadcastChannel.current.postMessage(event);
-    }
-  }, []);
-
-  const broadcastStateSync = useCallback(() => {
-    const syncEvent: DrawingEvent = {
-      id: uuidv4(),
-      type: 'draw',
-      userId: currentUser?.id || '',
-      timestamp: Date.now(),
-      data: { type: 'state_sync', state: systemState },
-      version: systemState.currentVersion
-    };
-    broadcastEvent(syncEvent);
-  }, [currentUser, systemState, broadcastEvent]);
-
-  const handleBroadcastMessage = useCallback((event: MessageEvent<DrawingEvent>) => {
-    const drawingEvent = event.data;
-    
-    // Process the event based on type
-    switch (drawingEvent.data?.type) {
-      case 'user_join':
-        handleUserJoin(drawingEvent.data.user);
-        break;
-      case 'user_leave':
-        handleUserLeave(drawingEvent.data.userId);
-        break;
-      case 'drawing_operation':
-        handleDrawingOperation(drawingEvent.data.operation);
-        break;
-      case 'state_sync':
-        handleStateSync(drawingEvent.data.state);
-        break;
-      case 'cursor_move':
-        handleCursorMove(drawingEvent.data.userId, drawingEvent.data.cursor);
-        break;
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(event));
     }
   }, []);
 
@@ -266,7 +204,6 @@ export const useDistributedSystem = () => {
   }, [persistState]);
 
   const handleStateSync = useCallback((syncedState: SystemState) => {
-    // Only accept state sync if it's from a higher version
     if (syncedState.currentVersion > systemState.currentVersion) {
       setSystemState(syncedState);
       persistState(syncedState);
@@ -358,8 +295,8 @@ export const useDistributedSystem = () => {
       clearInterval(heartbeatInterval.current);
     }
     
-    if (broadcastChannel.current) {
-      broadcastChannel.current.close();
+    if (wsRef.current) {
+      wsRef.current.close();
     }
 
     if (currentUser) {
@@ -372,15 +309,6 @@ export const useDistributedSystem = () => {
         version: systemState.currentVersion
       };
       broadcastEvent(event);
-    }
-
-    // Remove this node from registry
-    try {
-      const nodes = JSON.parse(localStorage.getItem(NODES_KEY) || '{}');
-      delete nodes[nodeId.current];
-      localStorage.setItem(NODES_KEY, JSON.stringify(nodes));
-    } catch (error) {
-      console.error('Failed to cleanup node:', error);
     }
   }, [currentUser, systemState.currentVersion, broadcastEvent]);
 
