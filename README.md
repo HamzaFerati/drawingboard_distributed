@@ -5,7 +5,7 @@ A real-time collaborative drawing application demonstrating advanced distributed
 ## Features
 
 - Real-time collaborative drawing
-- Peer-to-peer architecture (no central server)
+- Cross-device collaboration through WebSocket
 - Leader election and consensus
 - Fault tolerance and automatic recovery
 - Live cursor tracking and user presence
@@ -18,8 +18,8 @@ A real-time collaborative drawing application demonstrating advanced distributed
 - TypeScript
 - Vite
 - Tailwind CSS
-- BroadcastChannel API
-- LocalStorage
+- WebSocket (ws)
+- Express
 - HTML5 Canvas
 - Docker
 - Nginx
@@ -41,7 +41,7 @@ git clone https://github.com/HamzaFerati/drawingboard_distributed.git
 cd drawingboard_distributed
 ```
 
-2. Install dependencies:
+2. Install frontend dependencies:
 
 ```bash
 npm install
@@ -49,7 +49,26 @@ npm install
 yarn install
 ```
 
-3. Start the development server:
+3. Install server dependencies:
+
+```bash
+cd server
+npm install
+# or
+yarn install
+cd ..
+```
+
+4. Start the WebSocket server:
+
+```bash
+cd server
+npm start
+# or
+yarn start
+```
+
+5. In a new terminal, start the frontend development server:
 
 ```bash
 npm run dev
@@ -57,7 +76,24 @@ npm run dev
 yarn dev
 ```
 
-4. Open multiple browser tabs at `http://localhost:5173` to simulate distributed nodes.
+6. Open the application:
+   - For same-browser testing: Open multiple tabs at `http://localhost:5173`
+   - For cross-device testing: Have other users access `http://localhost:5173` from their browsers
+
+### Testing the Application
+
+1. **Same Browser Testing**:
+
+   - Open the application in multiple tabs
+   - Draw in one tab
+   - Watch the drawings appear in all other tabs
+   - Test fault tolerance by closing tabs
+
+2. **Cross-Device Testing**:
+   - Start the WebSocket server
+   - Have multiple users access the application from different devices
+   - Draw simultaneously and see real-time updates
+   - Test cursor tracking and user presence
 
 ### Docker Deployment
 
@@ -74,10 +110,9 @@ docker run -p 3000:80 drawing-board-app
 ```
 
 3. Access the application:
-
-- Open your browser and navigate to `http://localhost:3000`
-- Open multiple browser tabs to simulate distributed nodes
-- The application will automatically handle node synchronization
+   - Open your browser and navigate to `http://localhost:3000`
+   - Open multiple browser tabs to simulate distributed nodes
+   - The application will automatically handle node synchronization
 
 ### Docker Compose (Alternative)
 
@@ -91,12 +126,40 @@ services:
     ports:
       - "3000:80"
     restart: unless-stopped
+  websocket-server:
+    build: ./server
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
 ```
 
 2. Run with Docker Compose:
 
 ```bash
-docker-compose up -d
+docker-compose up
+```
+
+## Architecture
+
+The application now uses a WebSocket server to enable cross-device collaboration:
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Browser Tab 1 │    │   Browser Tab 2 │    │   Browser Tab 3 │
+│                 │    │                 │    │                 │
+│ • State Storage │    │ • State Storage │    │ • State Storage │
+│ • Event Log     │    │ • Event Log     │    │ • Event Log     │
+└────────┬────────┘    └────────┬────────┘    └────────┬────────┘
+         │                      │                      │
+         │                      │                      │
+         ▼                      ▼                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     WebSocket Server                        │
+│                                                             │
+│ • Client Management                                         │
+│ • Message Broadcasting                                      │
+│ • State Synchronization                                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Deployment Options
@@ -159,14 +222,14 @@ See `PROJECT_OVERVIEW.md` for a detailed technical and conceptual breakdown.
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
