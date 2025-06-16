@@ -6,9 +6,7 @@ const HEARTBEAT_INTERVAL = 1000;
 const NODE_TIMEOUT = 5000;
 const STORAGE_KEY = 'drawing_board_state';
 const NODES_KEY = 'drawing_board_nodes';
-const WS_URL = process.env.NODE_ENV === 'production' 
-  ? 'wss://drawingboard-distributed.onrender.com'
-  : 'ws://localhost:3001';
+const WS_URL = 'wss://drawingboard-distributed.onrender.com'; // Hardcoded for Vercel deployment
 
 export const useDistributedSystem = () => {
   const [systemState, setSystemState] = useState<SystemState>({
@@ -22,33 +20,20 @@ export const useDistributedSystem = () => {
   const [isLeader, setIsLeader] = useState(false);
   const [connectedNodes, setConnectedNodes] = useState<string[]>([]);
   
-  const nodeId = useRef<string>(uuidv4());
+  const nodeId = useRef<string>(''); // Will be set by server
   const wsRef = useRef<WebSocket | null>(null);
   const heartbeatInterval = useRef<number | null>(null);
 
-  // Initialize user and distributed system
+  // Initialize distributed system (no user ID here yet)
   useEffect(() => {
-    const userId = uuidv4();
-    const userColors = ['#3B82F6', '#14B8A6', '#F97316', '#EF4444', '#8B5CF6', '#10B981'];
-    const userName = `User ${Math.floor(Math.random() * 1000)}`;
-    
-    const user: User = {
-      id: userId,
-      name: userName,
-      color: userColors[Math.floor(Math.random() * userColors.length)],
-      isActive: true,
-      lastSeen: Date.now()
-    };
-
-    setCurrentUser(user);
-    initializeDistributedSystem(user);
+    initializeDistributedSystem();
 
     return () => {
       cleanup();
     };
   }, []);
 
-  const initializeDistributedSystem = useCallback((user: User) => {
+  const initializeDistributedSystem = useCallback(() => {
     // Initialize WebSocket connection
     wsRef.current = new WebSocket(WS_URL);
     
@@ -58,7 +43,7 @@ export const useDistributedSystem = () => {
     // Set up WebSocket event handlers
     wsRef.current.onopen = () => {
       console.log('WebSocket connected');
-      registerNode(user);
+      // Node registration will happen after receiving client ID from server
     };
 
     wsRef.current.onmessage = (event) => {
@@ -75,7 +60,7 @@ export const useDistributedSystem = () => {
       // Attempt to reconnect after a delay
       setTimeout(() => {
         if (wsRef.current?.readyState === WebSocket.CLOSED) {
-          initializeDistributedSystem(user);
+          initializeDistributedSystem();
         }
       }, 3000);
     };
@@ -87,13 +72,29 @@ export const useDistributedSystem = () => {
   const handleWebSocketMessage = useCallback((data: any) => {
     switch (data.type) {
       case 'connection':
+        // Server assigned this client's ID
         nodeId.current = data.clientId;
+        // Create user object with server-assigned ID
+        const userColors = ['#3B82F6', '#14B8A6', '#F97316', '#EF4444', '#8B5CF6', '#10B981'];
+        const userName = `User ${Math.floor(Math.random() * 1000)}`;
+        const newUser: User = {
+          id: nodeId.current,
+          name: userName,
+          color: userColors[Math.floor(Math.random() * userColors.length)],
+          isActive: true,
+          lastSeen: Date.now()
+        };
+        setCurrentUser(newUser);
+        registerNode(newUser); // Now register with the server-assigned ID
         break;
       case 'user_join':
         handleUserJoin(data.user);
+        // If this is a user join notification from another client, update connected nodes
+        setConnectedNodes(prev => [...new Set([...prev, data.user.id])]);
         break;
       case 'user_leave':
         handleUserLeave(data.userId);
+        setConnectedNodes(prev => prev.filter(id => id !== data.userId));
         break;
       case 'drawing_operation':
         handleDrawingOperation(data.operation);
@@ -103,6 +104,9 @@ export const useDistributedSystem = () => {
         break;
       case 'cursor_move':
         handleCursorMove(data.userId, data.cursor);
+        break;
+      case 'active_users_update': // New message type for active users
+        setConnectedNodes(data.users);
         break;
     }
   }, []);
@@ -295,17 +299,13 @@ export const useDistributedSystem = () => {
     }
 
     if (currentUser) {
-      const event: DrawingEvent = {
-        id: uuidv4(),
-        type: 'draw',
-        userId: currentUser.id,
-        timestamp: Date.now(),
-        data: { type: 'user_leave', userId: currentUser.id },
-        version: systemState.currentVersion
-      };
-      broadcastEvent(event);
+      // Only send user_leave if we have a valid server-assigned ID
+      wsRef.current?.send(JSON.stringify({
+        type: 'user_leave',
+        userId: currentUser.id
+      }));
     }
-  }, [currentUser, systemState.currentVersion, broadcastEvent]);
+  }, [currentUser, heartbeatInterval]);
 
   return {
     systemState,
