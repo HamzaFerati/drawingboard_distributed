@@ -2,19 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DrawingEvent, SystemState, User, DrawingOperation, DistributedNode } from '../types';
 
-// Add NodeJS type definition
-declare global {
-  namespace NodeJS {
-    interface Timeout {}
-  }
-}
-
 const HEARTBEAT_INTERVAL = 1000;
 const NODE_TIMEOUT = 5000;
 const STORAGE_KEY = 'drawing_board_state';
 const NODES_KEY = 'drawing_board_nodes';
 const WS_URL = process.env.NODE_ENV === 'production' 
-  ? 'wss://drawing-board-websocket.onrender.com'
+  ? 'wss://drawingboard-distributed.onrender.com'
   : 'ws://localhost:3001';
 
 export const useDistributedSystem = () => {
@@ -151,7 +144,7 @@ export const useDistributedSystem = () => {
           timestamp: Date.now()
         }));
       }
-    }, HEARTBEAT_INTERVAL);
+    }, HEARTBEAT_INTERVAL) as unknown as number;
   }, []);
 
   const broadcastEvent = useCallback((event: DrawingEvent) => {

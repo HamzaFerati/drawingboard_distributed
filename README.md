@@ -162,20 +162,56 @@ The application now uses a WebSocket server to enable cross-device collaboration
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Deployment Options
+## Deployment
 
-### 1. Vercel Deployment
+### WebSocket Server Deployment (Render.com)
 
-1. Push your code to GitHub
-2. Go to [Vercel](https://vercel.com)
-3. Import your repository
-4. Deploy
+1. Sign up for a free account at https://render.com
+2. Create a new Web Service:
+   - Click "New +" and select "Web Service"
+   - Connect your GitHub repository
+   - Configure the service:
+     - Name: `drawing-board-websocket`
+     - Environment: `Node`
+     - Build Command: `cd server && npm install`
+     - Start Command: `cd server && npm start`
+   - Click "Create Web Service"
+3. Wait for deployment to complete
+4. Note the WebSocket URL (e.g., `wss://drawing-board-websocket.onrender.com`)
 
-### 2. Docker Deployment
+### Frontend Deployment (Vercel)
 
-- Build and run locally using Docker
-- Deploy to any container platform (AWS, GCP, Azure)
-- Use Docker Compose for orchestration
+1. Sign up for a free account at https://vercel.com
+2. Create a new project:
+   - Click "Add New..." and select "Project"
+   - Import your GitHub repository
+   - Configure the project:
+     - Framework Preset: `Vite`
+     - Build Command: `npm run build`
+     - Output Directory: `dist`
+   - Add Environment Variables:
+     - `NODE_ENV`: `production`
+   - Click "Deploy"
+3. Wait for deployment to complete
+4. Your application will be available at the provided Vercel URL
+
+### Testing the Deployment
+
+1. Open the Vercel URL in your browser
+2. Open the same URL in another browser or device
+3. Draw in one window and verify that the drawing appears in the other window
+4. Check the browser console (F12) for any connection errors
+
+### Troubleshooting
+
+If the drawings are not syncing:
+
+1. Check the browser console for errors
+2. Verify the WebSocket connection:
+   - Look for "WebSocket connected" message in the console
+   - Check if the Render.com service is running
+3. Check Render.com logs for any server-side errors
+4. Ensure both the frontend and WebSocket server are properly deployed
 
 ## Repository
 
