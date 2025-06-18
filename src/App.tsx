@@ -4,7 +4,7 @@ import { Toolbar } from './components/Toolbar';
 import { UserList } from './components/UserList';
 import { SystemStatus } from './components/SystemStatus';
 import { useDistributedSystem } from './hooks/useDistributedSystem';
-import { DrawingTool, Point } from './types';
+import { DrawingTool, Point, DrawingOperation } from './types';
 import { Palette } from 'lucide-react';
 
 function App() {
@@ -24,7 +24,7 @@ function App() {
   const [currentOpacity, setCurrentOpacity] = useState(1.0);
 
   const handleDrawingOperation = (operation: any) => {
-    addDrawingOperation(operation);
+    addDrawingOperation(operation); // Send to server
   };
 
   const handleCursorMove = (cursor: Point) => {

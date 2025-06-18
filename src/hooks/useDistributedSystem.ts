@@ -13,14 +13,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
 
 export const useDistributedSystem = () => {
   const [systemState, setSystemState] = useState<SystemState>(() => {
-    try {
-      const persistedState = localStorage.getItem(STORAGE_KEY);
-      if (persistedState) {
-        return JSON.parse(persistedState);
-      }
-    } catch (error) {
-      console.error("Failed to load persisted state from localStorage:", error);
-    }
+    // Do not load operations from localStorage, only initialize empty state
     return { users: {}, operations: [], currentVersion: 0, lastUpdate: Date.now() };
   });
 
@@ -101,8 +94,8 @@ export const useDistributedSystem = () => {
   }, []);
 
   const handleWebSocketMessage = useCallback((data: any) => {
-    // console.log('Handling message:', data.type, data); // Too verbose, uncomment for deep debug
-
+    // Debug log for all messages
+    console.log('[WebSocket] Received message:', data.type, data);
     switch (data.type) {
       case 'connection':
         // Server sends ephemeral client ID on initial connect
@@ -139,7 +132,7 @@ export const useDistributedSystem = () => {
         });
         break;
       case 'drawing_operation':
-        // Apply drawing operation from server (server broadcasts persistent operation)
+        console.log('[WebSocket] Received drawing_operation:', data.operation);
         setSystemState(prev => {
           const newState = {
             ...prev,
@@ -147,7 +140,7 @@ export const useDistributedSystem = () => {
             currentVersion: prev.currentVersion + 1,
             lastUpdate: Date.now()
           };
-          persistState(newState);
+          // Do not persist operations to localStorage
           return newState;
         });
         break;
@@ -364,11 +357,6 @@ export const useDistributedSystem = () => {
     };
   }, [currentUser, handleWebSocketMessage, initiateReconnect, sendMessage, setConnectionStatus, startHeartbeat, stopHeartbeat]);
 
-  // Persist state to localStorage whenever systemState changes
-  useEffect(() => {
-    persistState(systemState);
-  }, [systemState, persistState]);
-
   // Update lastSeen for currentUser and send heartbeat on tab focus/visibility change
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -389,14 +377,18 @@ export const useDistributedSystem = () => {
 
 
   const addDrawingOperation = useCallback((operation: DrawingOperation) => {
-    // Send drawing operation to server
-    sendMessage({ type: 'drawing_operation', operation });
-  }, [sendMessage]);
+    // Send drawing operation to server in the correct format
+    if (currentUser) {
+      sendMessage({ type: 'drawing_operation', data: { operation }, userId: currentUser.id });
+    }
+  }, [sendMessage, currentUser]);
 
   const updateCursor = useCallback((cursor: Point) => {
-    // Send cursor update to server
-    sendMessage({ type: 'cursor_move', cursor });
-  }, [sendMessage]);
+    // Send cursor update to server in the correct format
+    if (currentUser) {
+      sendMessage({ type: 'cursor_move', data: { cursor }, userId: currentUser.id });
+    }
+  }, [sendMessage, currentUser]);
 
   const clearCanvas = useCallback(() => {
     // Send clear canvas message to server

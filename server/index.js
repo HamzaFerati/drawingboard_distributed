@@ -129,7 +129,7 @@ wss.on('connection', (ws) => {
         case 'drawing_operation':
           // Client sends { type: 'drawing_operation', data: { operation: {...} }, userId: 'persistentId' }
           currentOperations.push(data.data.operation); 
-          broadcast({ type: 'drawing_operation', operation: data.data.operation }, data.userId); // Broadcast to others using persistent ID
+          broadcastToAll({ type: 'drawing_operation', operation: data.data.operation }); // Broadcast to all, including sender
           break;
         case 'cursor_move':
           // Client sends { type: 'cursor_move', data: { cursor: {...} }, userId: 'persistentId' }
@@ -138,7 +138,7 @@ wss.on('connection', (ws) => {
             activeUsers.get(data.userId).cursor = data.data.cursor; 
             activeUsers.get(data.userId).lastSeen = Date.now();
           }
-          broadcast({ type: 'cursor_move', userId: data.userId, cursor: data.data.cursor }, data.userId); // Broadcast to others using persistent ID
+          broadcastToAll({ type: 'cursor_move', userId: data.userId, cursor: data.data.cursor }); // Broadcast to all, including sender
           break;
         case 'heartbeat':
           if (activeUsers.has(data.userId)) { // data.userId is persistent ID
