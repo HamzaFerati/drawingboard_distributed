@@ -133,8 +133,10 @@ export const useDistributedSystem = () => {
         break;
       case 'drawing_operation':
         setSystemState(prev => {
-          // Only append if the operation is not already present (optional, for deduplication)
-          // For now, always append
+          // Deduplicate by timestamp
+          if (prev.operations.some(op => op.timestamp === data.operation.timestamp)) {
+            return prev; // Already have this operation
+          }
           return {
             ...prev,
             operations: [...prev.operations, data.operation],
