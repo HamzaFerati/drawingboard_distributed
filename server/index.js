@@ -25,6 +25,7 @@ const wss = new WebSocket.Server({
 
 // Centralized State on the Server
 let currentOperations = []; // Stores all drawing operations
+console.log(`[Server] Initializing: currentOperations has ${currentOperations.length} operations.`);
 const activeUsers = new Map(); // Maps persistentUserId to User object { id, name, color, isActive, lastSeen, cursor, connectionId }
 // We'll also maintain a map from ephemeral connectionId to persistentUserId for lookup on disconnect
 const connectionIdToPersistentUser = new Map();
@@ -118,6 +119,7 @@ wss.on('connection', (ws) => {
               operations: currentOperations
             }
           }));
+          console.log(`[Server] Sent state_sync to client ${data.persistentUserId} with ${currentOperations.length} operations.`);
 
           // Notify others about the new user
           broadcastToAll({ type: 'user_join', user });
@@ -131,6 +133,7 @@ wss.on('connection', (ws) => {
         case 'drawing_operation':
           // Client sends { type: 'drawing_operation', data: { operation: {...} }, userId: 'persistentId' }
           currentOperations.push(data.data.operation); 
+          console.log(`[Server] Received drawing_operation. Total operations: ${currentOperations.length}`);
           broadcastToAll({ type: 'drawing_operation', operation: data.data.operation }); // Broadcast to all, including sender
           break;
         case 'cursor_move':
@@ -149,6 +152,7 @@ wss.on('connection', (ws) => {
           }
           break;
         case 'clear_canvas': 
+          console.log('[Server] Received clear_canvas message. Clearing operations.');
           currentOperations = []; 
           broadcastToAll({ type: 'clear_canvas' }); 
           break;
