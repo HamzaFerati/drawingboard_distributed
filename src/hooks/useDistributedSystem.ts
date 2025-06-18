@@ -132,37 +132,34 @@ export const useDistributedSystem = () => {
         });
         break;
       case 'drawing_operation':
-        console.log('[WebSocket] Received drawing_operation:', data.operation);
         setSystemState(prev => {
-          const newState = {
+          // Only append if the operation is not already present (optional, for deduplication)
+          // For now, always append
+          return {
             ...prev,
             operations: [...prev.operations, data.operation],
             currentVersion: prev.currentVersion + 1,
             lastUpdate: Date.now()
           };
-          // Do not persist operations to localStorage
-          return newState;
         });
         break;
       case 'state_sync':
-        // Receive full state from server on connect/reconnect
+        // Only replace the operations array on state_sync
         setSystemState(prev => {
             const syncedState = data.state;
             const mergedUsers: Record<string, User> = {};
-            if (syncedState.users) { // Ensure users array exists
+            if (syncedState.users) {
                 syncedState.users.forEach((u: User) => {
-                    mergedUsers[u.id] = u; // Server sends users by their persistent ID
+                    mergedUsers[u.id] = u;
                 });
             }
-            const newState = {
+            return {
                 ...prev,
                 users: mergedUsers,
                 operations: syncedState.operations || [],
                 currentVersion: syncedState.currentVersion || 0,
                 lastUpdate: Date.now()
             };
-            persistState(newState);
-            return newState;
         });
         break;
       case 'cursor_move':
