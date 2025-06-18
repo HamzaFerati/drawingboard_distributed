@@ -86,10 +86,12 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
+      console.log(`[Server] Received message type: ${data.type}`);
       console.log(`Received from ${ws._connectionId}:`, data.type);
 
       switch (data.type) {
         case 'client_connect_info': // Initial handshake from client
+          console.log('[Server] Sending state_sync to client after handshake:', data.persistentUserId);
           const persistentUserId = data.persistentUserId;
           const userName = data.userName;
           const userColor = data.userColor;

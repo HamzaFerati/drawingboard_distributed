@@ -146,7 +146,7 @@ export const useDistributedSystem = () => {
         });
         break;
       case 'state_sync':
-        // Only replace the operations array on state_sync
+        // Merge and deduplicate operations on state_sync
         setSystemState(prev => {
             const syncedState = data.state;
             const mergedUsers: Record<string, User> = {};
@@ -155,10 +155,15 @@ export const useDistributedSystem = () => {
                     mergedUsers[u.id] = u;
                 });
             }
+            // Merge and deduplicate operations by timestamp
+            const allOps = [...(prev.operations || []), ...(syncedState.operations || [])];
+            const dedupedOps = Array.from(
+              new Map(allOps.map(op => [op.timestamp, op])).values()
+            );
             return {
                 ...prev,
                 users: mergedUsers,
-                operations: syncedState.operations || [],
+                operations: dedupedOps,
                 currentVersion: syncedState.currentVersion || 0,
                 lastUpdate: Date.now()
             };
