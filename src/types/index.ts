@@ -13,12 +13,14 @@ export interface DrawingEvent {
 }
 
 export interface DrawingOperation {
+  id: string;
   type: 'stroke' | 'erase' | 'clear';
   points: Point[];
   color: string;
   size: number;
   tool: DrawingTool;
   timestamp: number;
+  opacity?: number;
 }
 
 export interface User {

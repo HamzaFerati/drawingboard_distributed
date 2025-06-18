@@ -155,10 +155,10 @@ export const useDistributedSystem = () => {
                     mergedUsers[u.id] = u;
                 });
             }
-            // Merge and deduplicate operations by timestamp
+            // Merge and deduplicate operations by id
             const allOps = [...(prev.operations || []), ...(syncedState.operations || [])];
             const dedupedOps = Array.from(
-              new Map(allOps.map(op => [op.timestamp, op])).values()
+              new Map(allOps.map(op => [op.id, op])).values()
             );
             return {
                 ...prev,

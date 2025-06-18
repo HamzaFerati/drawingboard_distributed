@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { DrawingOperation, Point, DrawingTool } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 interface CanvasProps {
   operations: DrawingOperation[];
@@ -189,6 +190,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (!isDrawing || currentStroke.length === 0) return;
 
     const operation: DrawingOperation = {
+      id: uuidv4(),
       type: currentTool === 'eraser' ? 'erase' : 'stroke',
       points: currentStroke,
       color: currentColor,
