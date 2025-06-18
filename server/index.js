@@ -11,59 +11,198 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
+const PORT = process.env.PORT || 3001;
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
 
-// Store connected clients
-const clients = new Map();
+// Create WebSocket server with proper error handling
+const wss = new WebSocket.Server({ 
+  server,
+  // Add ping/pong for connection health checks
+  clientTracking: true,
+  // Increase the maximum payload size if needed
+  maxPayload: 50 * 1024 * 1024 // 50MB
+});
+
+// Centralized State on the Server
+let currentOperations = []; // Stores all drawing operations
+const activeUsers = new Map(); // Maps persistentUserId to User object { id, name, color, isActive, lastSeen, cursor, connectionId }
+// We'll also maintain a map from ephemeral connectionId to persistentUserId for lookup on disconnect
+const connectionIdToPersistentUser = new Map();
+
+// Helper function to broadcast to all clients except sender
+function broadcast(message, senderPersistentUserId = null) {
+  wss.clients.forEach(function each(client) {
+    if (client.readyState === WebSocket.OPEN) {
+      // Only send to others if a senderPersistentUserId is specified AND it's not the sender
+      if (senderPersistentUserId && client._persistentUserId === senderPersistentUserId) return;
+      try {
+        client.send(JSON.stringify(message));
+      } catch (error) {
+        console.error('Error broadcasting message:', error);
+      }
+    }
+  });
+}
+
+// Helper function to broadcast to all clients
+function broadcastToAll(message) {
+  wss.clients.forEach(function each(client) {
+    if (client.readyState === WebSocket.OPEN) {
+      try {
+        client.send(JSON.stringify(message));
+      } catch (error) {
+        console.error('Error broadcasting to all:', error);
+      }
+    }
+  });
+}
 
 wss.on('connection', (ws) => {
-  const clientId = Math.random().toString(36).substring(7);
-  clients.set(clientId, ws);
+  const connectionId = Math.random().toString(36).substring(7);
+  ws._connectionId = connectionId;
+  
+  console.log(`Client connected: ${connectionId}`);
 
-  console.log(`Client connected: ${clientId}`);
+  // Set up ping/pong for connection health check
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
-  // Send the client their ID
-  ws.send(JSON.stringify({
-    type: 'connection',
-    clientId: clientId
-  }));
+  // Immediately send the ephemeral connection ID to the newly connected client
+  try {
+    ws.send(JSON.stringify({
+      type: 'connection',
+      clientId: connectionId
+    }));
+  } catch (error) {
+    console.error('Error sending connection ID:', error);
+  }
+
+  ws.on('error', (error) => {
+    console.error(`WebSocket error for client ${ws._connectionId}:`, error);
+  });
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      
-      // Broadcast the message to all other clients
-      clients.forEach((client, id) => {
-        if (id !== clientId && client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            ...data,
-            senderId: clientId
+      console.log(`Received from ${ws._connectionId}:`, data.type);
+
+      switch (data.type) {
+        case 'client_connect_info': // Initial handshake from client
+          const persistentUserId = data.persistentUserId;
+          const userName = data.userName;
+          const userColor = data.userColor;
+
+          // Associate ephemeral connectionId with persistentUserId
+          ws._persistentUserId = persistentUserId;
+          connectionIdToPersistentUser.set(connectionId, persistentUserId);
+
+          const user = { 
+            id: persistentUserId, 
+            name: userName,
+            color: userColor,
+            isActive: true, 
+            lastSeen: Date.now(),
+            connectionId: connectionId // Store ephemeral connection ID for potential lookup
+          };
+          activeUsers.set(persistentUserId, user);
+          
+          // Send full current state to the newly connected client
+          ws.send(JSON.stringify({
+            type: 'state_sync',
+            state: {
+              users: Array.from(activeUsers.values()),
+              operations: currentOperations
+            }
           }));
-        }
-      });
+
+          // Notify others about the new user
+          broadcastToAll({ type: 'user_join', user });
+          broadcastToAll({ type: 'active_users_update', users: Array.from(activeUsers.values()).map(u => u.id) });
+          break;
+        case 'user_leave': // Client explicitly leaving
+          activeUsers.delete(data.userId); // data.userId is persistent ID
+          broadcastToAll({ type: 'user_leave', userId: data.userId });
+          broadcastToAll({ type: 'active_users_update', users: Array.from(activeUsers.values()).map(u => u.id) });
+          break;
+        case 'drawing_operation':
+          // Client sends { type: 'drawing_operation', data: { operation: {...} }, userId: 'persistentId' }
+          currentOperations.push(data.data.operation); 
+          broadcast({ type: 'drawing_operation', operation: data.data.operation }, data.userId); // Broadcast to others using persistent ID
+          break;
+        case 'cursor_move':
+          // Client sends { type: 'cursor_move', data: { cursor: {...} }, userId: 'persistentId' }
+          // Update cursor position for active user using their persistent ID
+          if (activeUsers.has(data.userId)) {
+            activeUsers.get(data.userId).cursor = data.data.cursor; 
+            activeUsers.get(data.userId).lastSeen = Date.now();
+          }
+          broadcast({ type: 'cursor_move', userId: data.userId, cursor: data.data.cursor }, data.userId); // Broadcast to others using persistent ID
+          break;
+        case 'heartbeat':
+          if (activeUsers.has(data.userId)) { // data.userId is persistent ID
+            activeUsers.get(data.userId).lastSeen = Date.now();
+            activeUsers.get(data.userId).isActive = true; 
+          }
+          break;
+        case 'clear_canvas': 
+          currentOperations = []; 
+          broadcastToAll({ type: 'clear_canvas' }); 
+          break;
+        default:
+          console.warn(`Unknown message type from ${ws._connectionId}: ${data.type}`);
+          break;
+      }
     } catch (error) {
-      console.error('Error processing message:', error);
+      console.error('Error processing message from client', ws._connectionId, ':', error);
     }
   });
 
   ws.on('close', () => {
-    console.log(`Client disconnected: ${clientId}`);
-    clients.delete(clientId);
-    
-    // Notify other clients about the disconnection
-    clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({
-          type: 'user_leave',
-          userId: clientId
-        }));
-      }
-    });
+    console.log(`Client disconnected: ${ws._connectionId}`);
+    const leavingPersistentUserId = connectionIdToPersistentUser.get(ws._connectionId);
+    if (leavingPersistentUserId) {
+      activeUsers.delete(leavingPersistentUserId);
+      connectionIdToPersistentUser.delete(ws._connectionId);
+      
+      // Notify other clients about the disconnection
+      broadcastToAll({
+        type: 'user_leave',
+        userId: leavingPersistentUserId
+      });
+      // Send updated active users list to everyone
+      broadcastToAll({ 
+        type: 'active_users_update', 
+        users: Array.from(activeUsers.values()).map(u => u.id) 
+      });
+    }
   });
 });
 
-const PORT = process.env.PORT || 3001;
+// Set up periodic connection health check
+const interval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      console.log('Terminating inactive connection');
+      return ws.terminate();
+    }
+    
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+
+wss.on('close', () => {
+  clearInterval(interval);
+});
+
+// Start the server
 server.listen(PORT, () => {
   console.log(`WebSocket server is running on port ${PORT}`);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('Server error:', error);
 }); 

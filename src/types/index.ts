@@ -5,11 +5,11 @@ export interface Point {
 
 export interface DrawingEvent {
   id: string;
-  type: 'draw' | 'erase' | 'clear' | 'undo';
+  type: 'draw' | 'erase' | 'clear' | 'clear_canvas' | 'undo' | 'user_join' | 'user_leave' | 'state_sync' | 'cursor_move' | 'active_users_update' | 'heartbeat' | 'drawing_operation';
   userId: string;
   timestamp: number;
   data: any;
-  version: number;
+  version?: number;
 }
 
 export interface DrawingOperation {

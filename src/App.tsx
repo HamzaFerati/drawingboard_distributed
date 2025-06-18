@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
 import { UserList } from './components/UserList';
@@ -31,18 +31,29 @@ function App() {
     updateCursor(cursor);
   };
 
-  const otherCursors = Object.entries(systemState.users)
+  const otherCursors = Object.entries(systemState?.users || {})
     .filter(([userId]) => userId !== currentUser?.id)
     .reduce((acc, [userId, user]) => {
-      if (user.cursor && user.isActive) {
+      if (user?.cursor && user?.isActive) {
         acc[userId] = {
           cursor: user.cursor,
-          color: user.color,
-          name: user.name
+          color: user.color || '#000000',
+          name: user.name || 'Anonymous'
         };
       }
       return acc;
     }, {} as Record<string, { cursor: Point; color: string; name: string }>);
+
+  if (!systemState) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Loading...</h2>
+          <p className="text-gray-600">Connecting to the drawing board...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -96,7 +107,7 @@ function App() {
               onSizeChange={setCurrentSize}
               onOpacityChange={setCurrentOpacity}
               onClearCanvas={clearCanvas}
-              connectedUsers={Object.keys(systemState.users).length}
+              connectedUsers={Object.keys(systemState?.users || {}).length}
             />
           </div>
 
@@ -117,7 +128,7 @@ function App() {
           {/* Right Sidebar - Users & Status */}
           <div className="lg:col-span-1 space-y-4">
             <UserList 
-              users={systemState.users}
+              users={systemState?.users || {}}
               currentUserId={currentUser?.id}
             />
             
