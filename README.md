@@ -5,6 +5,7 @@ A real-time collaborative drawing application demonstrating advanced distributed
 ## Features
 
 - Real-time collaborative drawing
+- **Persistent Drawing History across sessions and refreshes**
 - Cross-device collaboration through WebSocket
 - Leader election and consensus
 - Fault tolerance and automatic recovery
@@ -23,6 +24,7 @@ A real-time collaborative drawing application demonstrating advanced distributed
 - HTML5 Canvas
 - Docker
 - Nginx
+- **UUID (for unique operation IDs)**
 
 ## Getting Started
 
@@ -59,24 +61,37 @@ yarn install
 cd ..
 ```
 
-4. Start the WebSocket server:
+4. **(Recommended) Run with Docker Compose:**
 
-```bash
-cd server
-npm start
-# or
-yarn start
-```
+   This is the easiest way to run both the frontend and the WebSocket server.
 
-5. In a new terminal, start the frontend development server:
+   ```bash
+   docker-compose up --build
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-```
+   Then, open your browser and navigate to `http://localhost:3000`
 
-6. Open the application:
+5. **(Alternative) Manual Local Development (if not using Docker Compose):**
+
+   a. Start the WebSocket server:
+
+   ```bash
+   cd server
+   npm start
+   # or
+   yarn start
+   ```
+
+   b. In a new terminal, start the frontend development server:
+
+   ```bash
+   npm run dev
+   # or
+   yarn dev
+   ```
+
+   c. Open the application:
+
    - For same-browser testing: Open multiple tabs at `http://localhost:5173`
    - For cross-device testing: Have other users access `http://localhost:5173` from their browsers
 
@@ -87,6 +102,7 @@ yarn dev
    - Open the application in multiple tabs
    - Draw in one tab
    - Watch the drawings appear in all other tabs
+   - **Refresh the browser tab and confirm previous drawings are still visible.**
    - Test fault tolerance by closing tabs
 
 2. **Cross-Device Testing**:
@@ -94,50 +110,59 @@ yarn dev
    - Have multiple users access the application from different devices
    - Draw simultaneously and see real-time updates
    - Test cursor tracking and user presence
+   - **Confirm drawing history persists when tabs are refreshed or re-opened.**
 
 ### Docker Deployment
 
-1. Build the Docker image:
+1. **Build and Run with Docker Compose (Recommended for local Docker testing):**
 
-```bash
-docker build -t drawing-board-app .
-```
+   If you ran `docker-compose up --build` in "Local Development", your images are already built and running.
 
-2. Run the container:
+   To ensure the latest changes are applied and run both services:
 
-```bash
-docker run -p 3000:80 drawing-board-app
-```
+   ```bash
+   docker-compose up --build
+   ```
 
-3. Access the application:
+   Then access the application in your browser: `http://localhost:3000`
+
+2. **Manual Docker Image Build and Run (if not using Docker Compose):**
+
+   a. Build the frontend Docker image:
+
+   ```bash
+   docker build -t drawing-board-app .
+   ```
+
+   b. Run the frontend container (make sure your WebSocket server is also running, either locally or in Docker):
+
+   ```bash
+   docker run -p 3000:80 drawing-board-app
+   ```
+
+   c. Build the WebSocket server Docker image:
+
+   ```bash
+   cd server
+   docker build -t drawing-board-websocket-server .
+   cd ..
+   ```
+
+   d. Run the WebSocket server container:
+
+   ```bash
+   docker run -p 3001:3001 drawing-board-websocket-server
+   ```
+
+   e. Access the application:
+
    - Open your browser and navigate to `http://localhost:3000`
    - Open multiple browser tabs to simulate distributed nodes
    - The application will automatically handle node synchronization
 
-### Docker Compose (Alternative)
+### Docker Compose (Simplified)
 
-1. Create a `docker-compose.yml` file:
-
-```yaml
-version: "3"
-services:
-  drawing-board:
-    build: .
-    ports:
-      - "3000:80"
-    restart: unless-stopped
-  websocket-server:
-    build: ./server
-    ports:
-      - "3001:3001"
-    restart: unless-stopped
-```
-
-2. Run with Docker Compose:
-
-```bash
-docker-compose up
-```
+_(This section is now integrated into "Local Development" and "Docker Deployment" for clarity.)_
 
 ## Architecture
 
@@ -159,6 +184,7 @@ The application now uses a WebSocket server to enable cross-device collaboration
 │ • Client Management                                         │
 │ • Message Broadcasting                                      │
 │ • State Synchronization                                     │
+│ **• Centralized Operation History for Persistence**         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -191,6 +217,7 @@ The application now uses a WebSocket server to enable cross-device collaboration
      - Output Directory: `dist`
    - Add Environment Variables:
      - `NODE_ENV`: `production`
+     - `VITE_WS_URL`: `wss://drawing-board-websocket.onrender.com` (Replace with your Render.com WebSocket URL)
    - Click "Deploy"
 3. Wait for deployment to complete
 4. Your application will be available at the provided Vercel URL
@@ -200,18 +227,19 @@ The application now uses a WebSocket server to enable cross-device collaboration
 1. Open the Vercel URL in your browser
 2. Open the same URL in another browser or device
 3. Draw in one window and verify that the drawing appears in the other window
-4. Check the browser console (F12) for any connection errors
+4. **Refresh the browser and confirm drawings persist.**
+5. Check the browser console (F12) for any connection errors
 
 ### Troubleshooting
 
-If the drawings are not syncing:
+If the drawings are not syncing or persisting:
 
 1. Check the browser console for errors
 2. Verify the WebSocket connection:
    - Look for "WebSocket connected" message in the console
    - Check if the Render.com service is running
 3. Check Render.com logs for any server-side errors
-4. Ensure both the frontend and WebSocket server are properly deployed
+4. Ensure both the frontend and WebSocket server are properly deployed and `VITE_WS_URL` is correctly set in Vercel.
 
 ## Repository
 
@@ -220,7 +248,7 @@ If the drawings are not syncing:
 ## Live Demo
 
 - Vercel Deployment: https://drawingboard-distributed.vercel.app
-- Docker Deployment: http://localhost:3000 (when running locally)
+- Docker Deployment: http://localhost:3000 (when running locally via Docker Compose)
 
 ## Project Overview
 
@@ -230,23 +258,36 @@ See `PROJECT_OVERVIEW.md` for a detailed technical and conceptual breakdown.
 
 ### Docker Issues
 
-1. If the container fails to start:
+1. If `docker-compose up --build` fails or you get "Cannot GET":
+
+   - Ensure `docker-compose.yml` is in your project root.
+   - Ensure `server/Dockerfile` exists for the WebSocket server.
+   - Try `docker-compose up --build --no-cache` to force a complete rebuild.
+   - Check terminal logs for specific build errors during `npm run build` steps.
+   - Verify `index.html` is present in `/usr/share/nginx/html` inside the running `drawing-board` container using `docker exec <container_id> ls -l /usr/share/nginx/html`.
+
+2. If the container fails to start:
 
    ```bash
-   docker logs drawing-board-app
+   docker logs <container_name_or_id>
    ```
 
-2. If port 3000 is already in use:
+   (You can find container names/IDs using `docker ps` or in Docker Desktop.)
+
+3. If a port is already in use:
+
+   You might need to stop the conflicting process or change the port mapping in `docker-compose.yml` (e.g., `"3001:80"`).
+
+   To stop a container:
 
    ```bash
-   docker run -p 3001:80 drawing-board-app
+   docker stop <container_name_or_id>
    ```
 
-   Then access http://localhost:3001
+4. To stop and remove all Docker Compose services:
 
-3. To stop the container:
    ```bash
-   docker stop drawing-board-app
+   docker-compose down
    ```
 
 ### Development Issues
