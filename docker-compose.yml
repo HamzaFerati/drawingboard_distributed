@@ -1,0 +1,14 @@
+version: "3"
+services:
+  drawing-board:
+    build: .
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    depends_on:
+      - websocket-server
+  websocket-server:
+    build: ./server
+    ports:
+      - "3001:3001"
+    restart: unless-stopped 
