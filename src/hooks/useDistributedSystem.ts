@@ -10,36 +10,48 @@ const MAX_RECONNECT_ATTEMPTS = 3;
 
 // Get WebSocket URL from environment variable or use default
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+console.log(`[useDistributedSystem] Attempting to connect to WS_URL: ${WS_URL}`); // Added for debugging
 
-export const useDistributedSystem = () => {
+export const useDistributedSystem = (persistentUserId: string | null, persistentUserName: string | null, persistentUserColor: string | null) => {
   const [systemState, setSystemState] = useState<SystemState>(() => {
     // Do not load operations from localStorage, only initialize empty state
     return { users: {}, operations: [], currentVersion: 0, lastUpdate: Date.now() };
   });
 
-  const [currentUser, /*setCurrentUser*/] = useState<User | null>(() => {
-    let userId = localStorage.getItem('persistent_user_id');
-    let userName = localStorage.getItem('persistent_user_name');
-    let userColor = localStorage.getItem('persistent_user_color');
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    // Use passed props if available, otherwise generate new or load from old localStorage (for backward compat)
+    if (persistentUserId && persistentUserName && persistentUserColor) {
+      return {
+        id: persistentUserId,
+        name: persistentUserName,
+        color: persistentUserColor,
+        isActive: false,
+        lastSeen: Date.now()
+      };
+    } else {
+      // Fallback to old localStorage or new generation if not authenticated yet
+      let userId = localStorage.getItem('persistent_user_id');
+      let userName = localStorage.getItem('persistent_user_name');
+      let userColor = localStorage.getItem('persistent_user_color');
 
-    if (!userId) {
-      userId = uuidv4();
-      const userColors = ['#3B82F6', '#14B8A6', '#F97316', '#EF4444', '#8B5CF6', '#10B981'];
-      userName = `User ${Math.floor(Math.random() * 1000)}`;
-      userColor = userColors[Math.floor(Math.random() * userColors.length)];
+      if (!userId) {
+        userId = uuidv4();
+        const userColors = ['#3B82F6', '#14B8A6', '#F97316', '#EF4444', '#8B5CF6', '#10B981'];
+        userName = `User ${Math.floor(Math.random() * 1000)}`;
+        userColor = userColors[Math.floor(Math.random() * userColors.length)];
 
-      localStorage.setItem('persistent_user_id', userId);
-      localStorage.setItem('persistent_user_name', userName);
-      localStorage.setItem('persistent_user_color', userColor);
+        localStorage.setItem('persistent_user_id', userId);
+        localStorage.setItem('persistent_user_name', userName);
+        localStorage.setItem('persistent_user_color', userColor);
+      }
+      return {
+        id: userId,
+        name: userName || `User ${Math.floor(Math.random() * 1000)}`,
+        color: userColor || '#000000',
+        isActive: false,
+        lastSeen: Date.now()
+      };
     }
-
-    return {
-      id: userId,
-      name: userName || `User ${Math.floor(Math.random() * 1000)}`,
-      color: userColor || '#000000',
-      isActive: false,
-      lastSeen: Date.now()
-    };
   });
 
   const [/*isLeader*/, /*setIsLeader*/] = useState(false); // Leader election is now server-side concept
@@ -212,7 +224,7 @@ export const useDistributedSystem = () => {
         console.warn(`Unknown message type: ${data.type}`);
         break;
     }
-  }, [persistState, currentUser, setConnectedNodes, setSystemState, sendMessage]);
+  }, [persistentUserId, persistentUserName, persistentUserColor, persistState, currentUser, setConnectedNodes, setSystemState, sendMessage]);
 
   const startHeartbeat = useCallback(() => {
     if (heartbeatIntervalRef.current) {
@@ -262,7 +274,11 @@ export const useDistributedSystem = () => {
   }, [isUnmountingRef, stopHeartbeat, sendMessage, setConnectionStatus]);
 
   useEffect(() => {
-    if (isUnmountingRef.current) return; // Prevent new connections if component is unmounting
+    // Only attempt to connect if a user is authenticated (userId is not null)
+    if (!persistentUserId || isUnmountingRef.current) {
+        console.log('[useEffect] Not initiating WebSocket connection: User not authenticated or component unmounting.');
+        return;
+    }
 
     // If a connection is already open, do nothing
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -283,8 +299,6 @@ export const useDistributedSystem = () => {
     setIsWsReady(false); // Mark as not ready until OPEN
     
     const ws = new WebSocket(WS_URL);
-    // IMPORTANT: wsRef.current should ONLY be set when the connection is OPEN to avoid race conditions
-    // during React StrictMode unmount/remount in development.
     const currentWsInstance = ws; // Hold reference for cleanup immediately
 
     currentWsInstance.onopen = (event) => {
@@ -296,7 +310,7 @@ export const useDistributedSystem = () => {
       startHeartbeat(); // Start sending heartbeats
 
       // Send initial connection information to the server
-      if (currentUser) {
+      if (currentUser) { // currentUser should be available here
         sendMessage({
           type: 'client_connect_info',
           persistentUserId: currentUser.id,
@@ -313,9 +327,6 @@ export const useDistributedSystem = () => {
 
     currentWsInstance.onerror = (event) => {
       console.error('[WebSocket] Error:', event);
-      // Do not set wsRef.current = null here. Let onclose handle it.
-      // setConnectionStatus('disconnected'); // Only set on disconnect
-      // setIsWsReady(false);
     };
 
     currentWsInstance.onclose = (event) => {
@@ -324,12 +335,10 @@ export const useDistributedSystem = () => {
       setIsWsReady(false);
       stopHeartbeat();
 
-      // Only nullify wsRef.current if it was this specific instance that closed
       if (wsRef.current === currentWsInstance) {
         wsRef.current = null; // Clear the ref only if it holds the closed instance
       }
       
-      // Only attempt reconnect if not unmounting and not explicitly closed by us
       if (!isUnmountingRef.current && !event.wasClean) {
         console.log('[WebSocket] Attempting to initiate reconnect...');
         initiateReconnect();
@@ -357,9 +366,18 @@ export const useDistributedSystem = () => {
       } else if (currentWsInstance) {
         console.log(`[useEffect Cleanup] WebSocket state: ${currentWsInstance.readyState}. Not explicitly closing.`);
       }
-      wsRef.current = null; // Ensure wsRef.current is nullified on cleanup
     };
-  }, [currentUser, handleWebSocketMessage, initiateReconnect, sendMessage, setConnectionStatus, startHeartbeat, stopHeartbeat]);
+  }, [
+    WS_URL,
+    persistentUserId, // Added as a key dependency to ensure connection only when user is logged in
+    handleWebSocketMessage, 
+    initiateReconnect, 
+    sendMessage, 
+    setConnectionStatus, 
+    startHeartbeat, 
+    stopHeartbeat,
+    currentUser // Keep currentUser because sendMessage and handleWebSocketMessage depend on it
+  ]);
 
   // Update lastSeen for currentUser and send heartbeat on tab focus/visibility change
   useEffect(() => {

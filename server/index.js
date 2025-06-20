@@ -1,17 +1,80 @@
+require('dotenv').config();
 const WebSocket = require('ws');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
+const Operation = require('./models/Operation');
+const User = require('./models/User'); // Will be used for authentication later
 
 const app = express();
 app.use(cors());
+app.use(express.json()); // For parsing application/json
+
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/drawingboard';
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// User Registration Route
+app.post('/api/register', async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required.' });
+  }
+
+  try {
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(409).json({ message: 'User with that username already exists.' });
+    }
+
+    const newUser = new User({ username, password });
+    await newUser.save();
+
+    res.status(201).json({ message: 'User registered successfully.', userId: newUser._id });
+  } catch (error) {
+    console.error('Error during user registration:', error);
+    res.status(500).json({ message: 'Server error during registration.' });
+  }
+});
+
+// User Login Route
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required.' });
+  }
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid username or password.' });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid username or password.' });
+    }
+
+    // In a real application, you would generate and send a JWT here
+    res.status(200).json({ message: 'Login successful.', userId: user._id, username: user.username, userColor: user.color });
+  } catch (error) {
+    console.error('Error during user login:', error);
+    res.status(500).json({ message: 'Server error during login.' });
+  }
+});
 
 // Add a health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 const server = http.createServer(app);
 
 // Create WebSocket server with proper error handling
@@ -24,8 +87,8 @@ const wss = new WebSocket.Server({
 });
 
 // Centralized State on the Server
-let currentOperations = []; // Stores all drawing operations
-console.log(`[Server] Initializing: currentOperations has ${currentOperations.length} operations.`);
+// let currentOperations = []; // Stores all drawing operations - REPLACED BY DATABASE
+console.log(`[Server] Initializing: currentOperations (now in DB) will be loaded on client connect.`);
 const activeUsers = new Map(); // Maps persistentUserId to User object { id, name, color, isActive, lastSeen, cursor, connectionId }
 // We'll also maintain a map from ephemeral connectionId to persistentUserId for lookup on disconnect
 const connectionIdToPersistentUser = new Map();
@@ -84,7 +147,7 @@ wss.on('connection', (ws) => {
     console.error(`WebSocket error for client ${ws._connectionId}:`, error);
   });
 
-  ws.on('message', (message) => {
+  ws.on('message', async (message) => { // Made async to use await
     try {
       const data = JSON.parse(message);
       console.log(`[Server] Received message type: ${data.type}`);
@@ -111,15 +174,16 @@ wss.on('connection', (ws) => {
           };
           activeUsers.set(persistentUserId, user);
           
-          // Send full current state to the newly connected client
+          // Fetch operations from DB and send to the newly connected client
+          const operationsFromDb = await Operation.find({});
           ws.send(JSON.stringify({
             type: 'state_sync',
             state: {
               users: Array.from(activeUsers.values()),
-              operations: currentOperations
+              operations: operationsFromDb.map(op => op.data) // Send only the data part of the operation
             }
           }));
-          console.log(`[Server] Sent state_sync to client ${data.persistentUserId} with ${currentOperations.length} operations.`);
+          console.log(`[Server] Sent state_sync to client ${data.persistentUserId} with ${operationsFromDb.length} operations.`);
 
           // Notify others about the new user
           broadcastToAll({ type: 'user_join', user });
@@ -132,8 +196,18 @@ wss.on('connection', (ws) => {
           break;
         case 'drawing_operation':
           // Client sends { type: 'drawing_operation', data: { operation: {...} }, userId: 'persistentId' }
-          currentOperations.push(data.data.operation); 
-          console.log(`[Server] Received drawing_operation. Total operations: ${currentOperations.length}`);
+          try {
+            const newOperation = new Operation({
+              type: data.data.operation.type,
+              operationId: data.data.operation.id, // Assuming operation has a unique ID
+              userId: data.userId,
+              data: data.data.operation
+            });
+            await newOperation.save();
+            console.log(`[Server] Saved drawing_operation to DB. Operation ID: ${newOperation.operationId}`);
+          } catch (dbError) {
+            console.error('Error saving drawing operation to DB:', dbError);
+          }
           broadcastToAll({ type: 'drawing_operation', operation: data.data.operation }); // Broadcast to all, including sender
           break;
         case 'cursor_move':
@@ -152,8 +226,13 @@ wss.on('connection', (ws) => {
           }
           break;
         case 'clear_canvas': 
-          console.log('[Server] Received clear_canvas message. Clearing operations.');
-          currentOperations = []; 
+          console.log('[Server] Received clear_canvas message. Clearing operations from DB.');
+          try {
+            await Operation.deleteMany({}); // Clear all operations from the database
+            console.log('[Server] All operations cleared from database.');
+          } catch (dbError) {
+            console.error('Error clearing operations from DB:', dbError);
+          }
           broadcastToAll({ type: 'clear_canvas' }); 
           break;
         default:

@@ -8,11 +8,15 @@
     "dev": "nodemon index.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "distributed-drawing-board": "file:..",
+    "dotenv": "^16.0.3",
     "express": "^4.18.2",
+    "mongoose": "^6.0.0",
     "ws": "^8.13.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
   }
-} 
+}

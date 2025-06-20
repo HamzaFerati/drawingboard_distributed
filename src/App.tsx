@@ -1,13 +1,52 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
 import { UserList } from './components/UserList';
 import { SystemStatus } from './components/SystemStatus';
 import { useDistributedSystem } from './hooks/useDistributedSystem';
 import { DrawingTool, Point, DrawingOperation } from './types';
-import { Palette } from 'lucide-react';
+import { Palette, LogOut } from 'lucide-react';
+import { Auth } from './components/Auth';
 
 function App() {
+  // State for authenticated user
+  const [userId, setUserId] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
+  const [userColor, setUserColor] = useState<string | null>(null);
+
+  // Check localStorage for existing user session on component mount
+  useEffect(() => {
+    const storedUserId = localStorage.getItem('userId');
+    const storedUsername = localStorage.getItem('username');
+    const storedUserColor = localStorage.getItem('userColor');
+
+    if (storedUserId && storedUsername && storedUserColor) {
+      setUserId(storedUserId);
+      setUsername(storedUsername);
+      setUserColor(storedUserColor);
+    }
+  }, []);
+
+  const handleLoginSuccess = (id: string, name: string, color: string) => {
+    setUserId(id);
+    setUsername(name);
+    setUserColor(color);
+    localStorage.setItem('userId', id);
+    localStorage.setItem('username', name);
+    localStorage.setItem('userColor', color);
+  };
+
+  const handleLogout = () => {
+    setUserId(null);
+    setUsername(null);
+    setUserColor(null);
+    localStorage.removeItem('userId');
+    localStorage.removeItem('username');
+    localStorage.removeItem('userColor');
+    // Optionally, refresh the page or redirect to login to ensure clean state
+    window.location.reload();
+  };
+
   const {
     systemState,
     currentUser,
@@ -16,12 +55,42 @@ function App() {
     addDrawingOperation,
     updateCursor,
     clearCanvas
-  } = useDistributedSystem();
+  } = useDistributedSystem(userId, username, userColor); // Pass user info to hook
 
-  const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
-  const [currentColor, setCurrentColor] = useState('#000000');
-  const [currentSize, setCurrentSize] = useState(4);
-  const [currentOpacity, setCurrentOpacity] = useState(1.0);
+  const [currentTool, setCurrentTool] = useState<DrawingTool>(() => {
+    // Initialize with a default or from localStorage if available
+    const storedTool = localStorage.getItem('currentTool');
+    return (storedTool as DrawingTool) || 'pen';
+  });
+  const [currentColor, setCurrentColor] = useState(() => {
+    const storedColor = localStorage.getItem('currentColor');
+    return storedColor || '#000000';
+  });
+  const [currentSize, setCurrentSize] = useState(() => {
+    const storedSize = localStorage.getItem('currentSize');
+    return storedSize ? parseInt(storedSize) : 4;
+  });
+  const [currentOpacity, setCurrentOpacity] = useState(() => {
+    const storedOpacity = localStorage.getItem('currentOpacity');
+    return storedOpacity ? parseFloat(storedOpacity) : 1.0;
+  });
+
+  // Persist tool settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('currentTool', currentTool);
+  }, [currentTool]);
+
+  useEffect(() => {
+    localStorage.setItem('currentColor', currentColor);
+  }, [currentColor]);
+
+  useEffect(() => {
+    localStorage.setItem('currentSize', currentSize.toString());
+  }, [currentSize]);
+
+  useEffect(() => {
+    localStorage.setItem('currentOpacity', currentOpacity.toString());
+  }, [currentOpacity]);
 
   const handleDrawingOperation = (operation: any) => {
     addDrawingOperation(operation); // Send to server
@@ -32,10 +101,10 @@ function App() {
   };
 
   const otherCursors = Object.entries(systemState?.users || {})
-    .filter(([userId]) => userId !== currentUser?.id)
-    .reduce((acc, [userId, user]) => {
+    .filter(([id]) => id !== userId) // Filter out the logged-in user's own cursor
+    .reduce((acc, [id, user]) => {
       if (user?.cursor && user?.isActive) {
-        acc[userId] = {
+        acc[id] = {
           cursor: user.cursor,
           color: user.color || '#000000',
           name: user.name || 'Anonymous'
@@ -43,6 +112,10 @@ function App() {
       }
       return acc;
     }, {} as Record<string, { cursor: Point; color: string; name: string }>);
+
+  if (!userId) {
+    return <Auth onLoginSuccess={handleLoginSuccess} />;
+  }
 
   if (!systemState) {
     return (
@@ -76,17 +149,25 @@ function App() {
             </div>
             
             <div className="flex items-center space-x-4">
-              {currentUser && (
+              {username && (
                 <div className="flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-full">
                   <div
                     className="w-3 h-3 rounded-full border border-white"
-                    style={{ backgroundColor: currentUser.color }}
+                    style={{ backgroundColor: userColor || '#000000' }}
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    {currentUser.name}
+                    {username}
                   </span>
                 </div>
               )}
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-2 px-3 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors duration-200 text-sm"
+                title="Logout"
+              >
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
             </div>
           </div>
         </div>
