@@ -31,7 +31,9 @@ export const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
       const data = await response.json();
 
       if (response.ok) {
-        onLoginSuccess(data.userId, data.username, data.userColor); // Pass user data on success
+        // On successful login, assign a random color if the user doesn't have one
+        const userColor = data.userColor || `#${Math.floor(Math.random()*16777215).toString(16)}`;
+        onLoginSuccess(data.userId, data.username, userColor); // Pass user data on success
       } else {
         setError(data.message || 'An error occurred.');
       }
@@ -43,53 +45,57 @@ export const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
-        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
-          {isRegister ? 'Register' : 'Login'}
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-purple-100 p-4">
+      <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-md border border-gray-200 transform hover:scale-[1.01] transition-transform duration-300">
+        <h2 className="text-3xl font-extrabold mb-8 text-center text-gray-900 leading-tight">
+          {isRegister ? 'Create Your Account' : 'Welcome Back!'}
         </h2>
-        {error && <p className="text-red-500 text-sm mb-4 text-center">{error}</p>}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <p className="text-red-600 text-sm mb-4 text-center bg-red-50 p-2 rounded-md border border-red-200">{error}</p>}
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700">Username</label>
+            <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
             <input
               type="text"
               id="username"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              aria-label="Username"
             />
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+            <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
             <input
               type="password"
               id="password"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              aria-label="Password"
             />
           </div>
           <button
             type="submit"
-            className={`w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${loading ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+            className={`w-full py-3 px-4 border border-transparent rounded-lg shadow-md text-base font-bold text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+              ${loading ? 'bg-gradient-to-r from-blue-300 to-blue-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transform hover:-translate-y-0.5'}
+            `}
             disabled={loading}
           >
             {loading ? 'Processing...' : (isRegister ? 'Register' : 'Login')}
           </button>
         </form>
-        <p className="mt-6 text-center text-sm text-gray-600">
+        <p className="mt-8 text-center text-sm text-gray-600">
           {isRegister ? 'Already have an account? ' : 'Don\'t have an account? '}
           <button
             onClick={() => setIsRegister(!isRegister)}
-            className="font-medium text-blue-600 hover:text-blue-500"
+            className="font-semibold text-blue-700 hover:text-blue-800 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-md p-1 -m-1"
           >
-            {isRegister ? 'Login' : 'Register'}
+            {isRegister ? 'Login here' : 'Register now'}
           </button>
         </p>
       </div>
     </div>
   );
-}; 
+};
