@@ -176,6 +176,7 @@ wss.on('connection', (ws) => {
           
           // Fetch operations from DB and send to the newly connected client
           const operationsFromDb = await Operation.find({});
+          console.log(`[Server] Operations fetched from DB (${operationsFromDb.length}):`, operationsFromDb.map(op => op.data.type)); // Log just the types for brevity
           ws.send(JSON.stringify({
             type: 'state_sync',
             state: {

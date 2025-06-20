@@ -172,6 +172,7 @@ export const useDistributedSystem = (persistentUserId: string | null, persistent
             const dedupedOps = Array.from(
               new Map(allOps.map(op => [op.id, op])).values()
             );
+            console.log(`[Client] Received state_sync with ${dedupedOps.length} operations. Types:`, dedupedOps.map(op => op.type)); // Added for debugging
             return {
                 ...prev,
                 users: mergedUsers,
